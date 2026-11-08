@@ -36,8 +36,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"Muter · 会议语音净化 v{__version__}")
-        self.geometry("900x645")
-        self.minsize(760, 620)
+        self.set_startup_geometry()
         self.configure(bg=BG)
         DATA.mkdir(parents=True, exist_ok=True)
         from .diagnostics import configure
@@ -103,6 +102,25 @@ class App(tk.Tk):
             self.quality_var.set(ISOLATION)
             self.change_model()
 
+    def set_startup_geometry(self):
+        from ctypes.wintypes import RECT
+        import win32api
+        import win32con
+
+        monitor = win32api.MonitorFromPoint((0, 0), win32con.MONITOR_DEFAULTTOPRIMARY)
+        left, top, right, bottom = win32api.GetMonitorInfo(monitor)["Work"]
+        work_width, work_height = right - left, bottom - top
+        outer_width = min(2050, work_width - 32)
+        outer_height = min(1125, work_height - 32)
+        frame = RECT()
+        ctypes.windll.user32.AdjustWindowRectEx(ctypes.byref(frame), win32con.WS_OVERLAPPEDWINDOW, False, 0)
+        width = max(1, outer_width - (frame.right - frame.left))
+        height = max(1, outer_height - (frame.bottom - frame.top))
+        x = left + (work_width - outer_width) // 2
+        y = top + (work_height - outer_height) // 2
+        self.minsize(min(760, width), min(620, height))
+        self.geometry(f"{width}x{height}+{x}+{y}")
+
     def _style(self):
         style = ttk.Style(self)
         style.theme_use("clam")
@@ -155,7 +173,6 @@ class App(tk.Tk):
 
         footer = tk.Frame(outer, bg=BG)
         footer.pack(side="bottom", fill="x", pady=(10, 0))
-        self.label(footer, "本机处理  ·  实时音频不保存  ·  关闭窗口后在托盘运行", 9, DIM).pack(side="left")
         self.label(footer, f"WINDOWS   /   v{__version__}", 9, DIM).pack(side="right")
 
         scroll = tk.Frame(outer, bg=BG)

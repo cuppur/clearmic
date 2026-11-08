@@ -1,4 +1,4 @@
-#define AppVersion "0.4.1"
+#define AppVersion "0.4.2"
 [Setup]
 AppId={{F6F6802E-6476-4117-908F-7758A74ED602}
 AppName=Muter

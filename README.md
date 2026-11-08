@@ -6,7 +6,7 @@ Muter 是 Windows x64 会议麦克风工具。在本机压低环境噪声，并�
 
 ## 安装和使用
 
-从 [GitHub Releases](https://github.com/cuppur/muter/releases/latest) 下载并运行 `Muter-Setup-0.4.1-x64.exe`。安装包包含运行环境、模型和 VB-Audio 提供的原版基础 VB-CABLE。Windows 可能在安装驱动时要求管理员授权或重启。
+从 [GitHub Releases](https://github.com/cuppur/muter/releases/latest) 下载并运行最新的 `Muter-Setup-*-x64.exe`。安装包包含运行环境、模型和 VB-Audio 提供的原版基础 VB-CABLE。Windows 可能在安装驱动时要求管理员授权或重启。
 
 1. 选「环境降噪」「人声隔离」或「加强人声隔离」。人声隔离需要一次本人声音录入。
 2. 连上耳机，点「开启实时试听」，用「原声」和「降噪后」比较。
