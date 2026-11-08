@@ -14,8 +14,8 @@ class DesktopLayoutTests(unittest.TestCase):
             with self.subTest(dpi=dpi):
                 scale, minimum, initial = fit_window(dpi, (0, 0, 3840, 2070))
                 self.assertEqual(scale, dpi / 96)
-                self.assertEqual(minimum, (round(680 * scale), round(540 * scale)))
-                self.assertEqual(initial, (round(780 * scale), round(620 * scale)))
+                self.assertEqual(minimum, (round(780 * scale), round(552 * scale)))
+                self.assertEqual(initial, (round(780 * scale), round(552 * scale)))
 
     def test_small_work_area_fits_startup_and_minimum(self):
         scale, minimum, initial = fit_window(240, (-1920, 0, 0, 980))

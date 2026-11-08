@@ -247,7 +247,6 @@ class App(DesktopUI, tk.Tk):
         action = "停止处理" if self.live or self.conference_route else "取消操作"
         self.quick_btn.configure(state="normal" if can_start or can_stop else "disabled",
                                  text=action if can_stop else "开启会议降噪")
-        self.paint_button(self.quick_btn, "stop" if can_stop else "hero", "开启会议降噪", 118)
         self.mode_hint.set(MODE_DESCRIPTIONS[self.quality_var.get()])
         self.mode_tag.configure(text="单人会议推荐" if self.quality_var.get() == ISOLATION else
                                 "无需声音样本" if not self.model.requires_voice else "使用本人声纹")
@@ -272,7 +271,7 @@ class App(DesktopUI, tk.Tk):
         self.test_btn.configure(state="normal" if monitor_available else "disabled",
                                 text="停止实时试听" if self.monitoring else "开启实时试听")
         if self.monitoring:
-            self.ab_row.pack(side="right", padx=(self.px(4), 0), before=self.monitor_message)
+            self.ab_row.pack(side="right")
         else:
             self.ab_row.pack_forget()
         for b in (self.raw_btn, self.clean_btn):
@@ -287,9 +286,10 @@ class App(DesktopUI, tk.Tk):
         self.mute_btn.configure(state="normal" if self.live and self.busy else "disabled",
                                 text="恢复传声" if self.paused else "暂停传声")
         if self.live and self.busy:
-            self.mute_btn.grid(pady=(self.px(4), 0))
+            self.mute_btn.grid(padx=(0, self.px(10)))
         else:
             self.mute_btn.grid_remove()
+        self.paint_buttons()
 
     def _load_model(self, model, generation):
         try:

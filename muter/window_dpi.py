@@ -3,8 +3,8 @@
 import ctypes
 from ctypes import wintypes
 
-DEFAULT_SIZE = (780, 620)
-MINIMUM_SIZE = (680, 540)
+DEFAULT_SIZE = (780, 552)
+MINIMUM_SIZE = DEFAULT_SIZE
 BASE_DPI = 96
 
 
