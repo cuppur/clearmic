@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+models/
+artifacts/
+*.spec
+vendor/
+*.lnk
+*.log
+*.wav
+*.ogg
+.env
+.env.*
+.pytest_cache/

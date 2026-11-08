@@ -1,0 +1,19 @@
+Muter includes open-source GTCRN, VoxLock, ONNX Runtime, sherpa-onnx,
+pycaw and other components with their original licenses.
+
+VB-CABLE is provided by VB-Audio Software, https://vb-audio.com/Cable/ .
+VB-CABLE is Donationware, all participations are welcome.
+Support or purchase a license at https://vb-audio.com/Services/licensing.htm .
+The original unmodified base VB-CABLE package is included. The current official
+distribution grant permits bundled silent installation under its stated terms.
+Professional/organizational deployments must comply with the upstream licensing
+requirements. Additional A+B / C+D cables are not included.
+
+Driver installation requires Windows administrator authorization and may require
+a Windows restart. Muter does not disable driver signing or Windows protections.
+Audio playback defaults are preserved during normal operation. Default microphone
+roles are restored on stop; an independent recovery process handles application exit.
+
+Feishu/Lark should follow the system default microphone. Apps that explicitly pin
+a physical microphone may ignore Windows defaults; this cannot be guaranteed by
+the OS routing API. Actual Feishu receiver validation remains required.
