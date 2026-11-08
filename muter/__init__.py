@@ -1,4 +1,4 @@
 """Local Windows target-speaker microphone prototype."""
 
 APP_NAME = "ClearMic"
-__version__ = "0.4.3"
+__version__ = "0.4.4"

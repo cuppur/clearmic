@@ -1,4 +1,4 @@
-#define AppVersion "0.4.3"
+#define AppVersion "0.4.4"
 #define AppName "ClearMic"
 [Setup]
 AppId={{F6F6802E-6476-4117-908F-7758A74ED602}

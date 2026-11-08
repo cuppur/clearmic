@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ctypes
-from dataclasses import dataclass
 from datetime import datetime
 import json
 import logging
@@ -11,8 +10,7 @@ import queue
 import threading
 import time
 import tkinter as tk
-import tkinter.font as tkfont
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 import webbrowser
 
 import numpy as np
@@ -20,29 +18,11 @@ import sounddevice as sd
 import soundfile as sf
 
 from .audio import DATA, PROFILE, ROOT, SR, LiveAudio, Model, dbfs, devices, load_voice, record, stream_config, write_json, windows_audio_thread
-from . import APP_NAME, __version__
+from . import APP_NAME
 from .realtime import LiveSettings
+from .desktop_ui import DesktopUI
+from .window_dpi import enable_per_monitor_dpi
 
-@dataclass(frozen=True)
-class Palette:
-    bg: str
-    card: str
-    text: str
-    dim: str
-    hero: str
-    accent: str
-    edge: str
-    field: str
-    primary: str
-    selected: str
-
-
-PALETTES = {
-    "light": Palette("#ECF2F3", "#FFFFFF", "#142D37", "#526F7B", "#102A33",
-                     "#116A59", "#CFE1E4", "#E5EFF0", "#116A59", "#CFEAE5"),
-    "dark": Palette("#0A151B", "#12232D", "#E8F2F4", "#A7BCC7", "#0D2932",
-                    "#7BDDC6", "#304854", "#203640", "#116A59", "#1C493E"),
-}
 AMBIENT, ISOLATION, STRONG, FULL_PRECISION = "环境降噪", "人声隔离", "加强人声隔离", "人声隔离 · FP32"
 MODE_DESCRIPTIONS = {
     AMBIENT: "压低风扇、键盘等环境声，无需声音样本。",
@@ -52,15 +32,10 @@ MODE_DESCRIPTIONS = {
 }
 
 
-class App(tk.Tk):
+class App(DesktopUI, tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(f"{APP_NAME} · 会议语音净化 v{__version__}")
-        self.set_startup_geometry()
-        self.appearance_path = DATA / "appearance.json"
-        self.theme = self.load_theme()
-        self.palette = PALETTES[self.theme]
-        self.configure(bg=self.palette.bg)
+        self.withdraw()
         DATA.mkdir(parents=True, exist_ok=True)
         from .diagnostics import configure
         configure(DATA)
@@ -103,20 +78,12 @@ class App(tk.Tk):
         self.output_level = tk.StringVar(value="— dBFS")
         self.latency_var = tk.StringVar(value="均衡 · 80 ms 缓冲")
         self.status_var = tk.StringVar(value="正在载入本地人声模型…")
-        self.voice_var = tk.StringVar(value="环境降噪和实时试听可直接使用，无需录入。尝试人声隔离时，再单独录入本人声音。")
+        self.voice_var = tk.StringVar(value="环境降噪与试听可直接使用。人声隔离需录入样本。")
         self.route_var = tk.StringVar()
         self.stats_var = tk.StringVar(value="推理 P95：—    输出缓冲：—    欠载：—")
         self.test_var = tk.StringVar(value="戴上耳机，边说边听并比较降噪效果。")
-        ttk.Style(self).theme_use("clam")
-        self.action_font = tkfont.Font(family="Microsoft YaHei UI", size=9, weight="bold")
-        self.hero_font = tkfont.Font(family="Microsoft YaHei UI", size=10, weight="bold")
-        self.button_faces = {}
-        self.button_specs = []
-        self.panel_surfaces = []
-        self._build()
-        self._style()
+        self.initialize_desktop(DATA / "appearance.json", tuple(MODE_DESCRIPTIONS))
         self.input_var.trace_add("write", self.update_mic_hint)
-        self.bind("<MouseWheel>", self.scroll_content)
         try:
             repaired = self.route.api.repair_virtual_defaults()
             if repaired: logging.info("Automatically repaired virtual defaults: %s", repaired)
@@ -137,485 +104,7 @@ class App(tk.Tk):
             self.quality_var.set(ISOLATION)
             self.change_model()
 
-    def set_startup_geometry(self):
-        from ctypes.wintypes import RECT
-        import win32api
-        import win32con
-
-        monitor = win32api.MonitorFromPoint((0, 0), win32con.MONITOR_DEFAULTTOPRIMARY)
-        left, top, right, bottom = win32api.GetMonitorInfo(monitor)["Work"]
-        work_width, work_height = right - left, bottom - top
-        outer_width = min(2050, work_width - 32)
-        outer_height = min(1125, work_height - 32)
-        frame = RECT()
-        ctypes.windll.user32.AdjustWindowRectEx(ctypes.byref(frame), win32con.WS_OVERLAPPEDWINDOW, False, 0)
-        width = max(1, outer_width - (frame.right - frame.left))
-        height = max(1, outer_height - (frame.bottom - frame.top))
-        x = left + (work_width - outer_width) // 2
-        y = top + (work_height - outer_height) // 2
-        # Keep the standard two-column layout readable at Windows DPI.
-        desktop_width = round(560 * float(self.tk.call("tk", "scaling")) * 0.75)
-        self.minsize(min(desktop_width, width), min(620, height))
-        self.geometry(f"{width}x{height}+{x}+{y}")
-
-    def load_theme(self):
-        try:
-            config = json.loads(self.appearance_path.read_text(encoding="utf-8"))
-            if isinstance(config, dict) and config.get("theme") == "dark":
-                return "dark"
-        except FileNotFoundError:
-            pass
-        except (OSError, ValueError):
-            logging.warning("Could not read appearance settings", exc_info=True)
-        return "light"
-
-    def toggle_theme(self):
-        from .routing import atomic_json
-
-        previous = self.palette
-        self.theme = "dark" if self.theme == "light" else "light"
-        self.palette = PALETTES[self.theme]
-        palette = self.palette
-        background_roles = ("bg", "card", "hero", "accent", "edge", "field", "selected")
-        foreground_roles = ("text", "dim", "accent")
-        backgrounds = {getattr(previous, role).lower(): getattr(palette, role) for role in background_roles}
-        foregrounds = {getattr(previous, role).lower(): getattr(palette, role) for role in foreground_roles}
-        options = dict.fromkeys(("background", "activebackground", "highlightbackground", "selectcolor"), backgrounds)
-        options.update(dict.fromkeys(("foreground", "activeforeground", "disabledforeground", "highlightcolor"), foregrounds))
-        widgets = [self]
-        while widgets:
-            widget = widgets.pop()
-            widgets.extend(widget.winfo_children())
-            changed = {}
-            for option in options.keys() & set(widget.keys()):
-                color = options[option].get(str(widget.cget(option)).lower())
-                if color:
-                    changed[option] = color
-            if changed:
-                widget.configure(**changed)
-        self._style()
-        for surface, hero in self.panel_surfaces:
-            surface.itemconfigure("surface", fill=palette.hero if hero else palette.card,
-                                  outline="#235050" if hero else palette.edge)
-        for button, caption, primary in self.button_specs:
-            background = palette.primary if primary else palette.field
-            button.configure(image=self.button_face(caption, background, self.action_font, (38, 22)))
-        self.paint_settings_tabs()
-        self.theme_btn.configure(text=self.theme_caption())
-        try:
-            atomic_json(self.appearance_path, {"theme": self.theme})
-        except OSError:
-            logging.warning("Could not save appearance settings", exc_info=True)
-
-    def scroll_content(self, event):
-        if event.delta:
-            self.body_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
-
-    def theme_caption(self):
-        return "深色主题" if self.theme == "light" else "浅色主题"
-
-    def _style(self):
-        palette = self.palette
-        style = ttk.Style(self)
-        style.configure("TCombobox", fieldbackground=palette.field, background=palette.field, foreground=palette.text,
-                        arrowcolor=palette.accent, bordercolor=palette.edge, lightcolor=palette.edge,
-                        darkcolor=palette.edge, padding=12, arrowsize=17,
-                        font=("Microsoft YaHei UI", 10))
-        style.map("TCombobox", fieldbackground=[("readonly", palette.field)],
-                  selectbackground=[("readonly", palette.field)], selectforeground=[("readonly", palette.text)])
-        style.configure("TSeparator", background=palette.edge)
-        style.configure("Vertical.TScrollbar", background=palette.field, troughcolor=palette.bg,
-                        bordercolor=palette.bg, lightcolor=palette.field, darkcolor=palette.field,
-                        arrowcolor=palette.dim, arrowsize=11)
-        style.map("Vertical.TScrollbar", background=[("active", palette.selected)])
-        style.map("TCombobox", background=[("active", palette.selected), ("disabled", palette.bg)],
-                  foreground=[("disabled", palette.dim)])
-        for option, value in (("background", palette.card), ("foreground", palette.text),
-                              ("selectBackground", palette.selected), ("selectForeground", palette.text)):
-            self.option_add(f"*TCombobox*Listbox.{option}", value)
-        for combo in (self.input_combo, self.output_combo, self.quality_combo, self.latency_combo):
-            listbox = f"{combo}.popdown.f.l"
-            if self.tk.call("winfo", "exists", listbox):
-                self.tk.call(listbox, "configure", "-background", palette.card, "-foreground", palette.text,
-                             "-selectbackground", palette.selected, "-selectforeground", palette.text)
-        style.configure("Meter.Horizontal.TProgressbar", background=palette.accent, troughcolor=palette.field,
-                        bordercolor=palette.field, lightcolor=palette.accent, darkcolor=palette.accent, thickness=12)
-        self.option_add("*TCombobox*Listbox.font", ("Microsoft YaHei UI", 10))
-
-    def label(self, parent, text="", size=10, color=None, bold=False, bg_override=None, **kw):
-        return tk.Label(parent, text=text, bg=bg_override or parent.cget("bg"), fg=color or self.palette.text,
-                        font=("Microsoft YaHei UI", size, "bold" if bold else "normal"),
-                        anchor="w", justify="left", **kw)
-
-    def button_face(self, text, background, font, padding):
-        width, height = font.measure(text) + padding[0], font.metrics("linespace") + padding[1]
-        face_key = (width, height, background)
-        if face_key not in self.button_faces:
-            face = tk.PhotoImage(width=width, height=height)
-            radius = min(14, height // 2)
-            for y in range(height):
-                dy = max(radius - y, y - (height - radius - 1), 0)
-                inset = radius - int(max(0, radius ** 2 - dy ** 2) ** .5)
-                face.put(background, to=(inset, y, width - inset, y + 1))
-            self.button_faces[face_key] = face
-        return self.button_faces[face_key]
-
-    def button(self, parent, text, command, primary=False, hero=False):
-        palette = self.palette
-        background = "#82E3C9" if hero else palette.primary if primary else palette.field
-        foreground = "#103932" if hero else "#FFFFFF" if primary else palette.text
-        font = self.hero_font if hero else self.action_font
-        face = self.button_face(text, background, font, (38, 22))
-        surface = parent.cget("bg")
-        button = tk.Button(parent, text=text, command=command, image=face, compound="center",
-                           bg=surface, fg=foreground, activebackground=surface, activeforeground=foreground,
-                           disabledforeground="#355F58" if hero else "#637E88" if primary else palette.dim,
-                           highlightbackground=surface, highlightcolor=palette.accent,
-                           relief="flat", bd=0, padx=0, pady=0, cursor="hand2", takefocus=True, font=font)
-        if not hero:
-            self.button_specs.append((button, text, primary))
-        return button
-
-    def panel(self, parent, hero=False):
-        palette = self.palette
-        background = palette.hero if hero else palette.card
-        outer = tk.Frame(parent, bg=palette.bg)
-        surface = tk.Canvas(outer, bg=palette.bg, bd=0, highlightthickness=0)
-        surface.place(relwidth=1, relheight=1)
-        self.panel_surfaces.append((surface, hero))
-        body = tk.Frame(outer, bg=background)
-        body.pack(fill="both", expand=True, padx=24, pady=16)
-        def draw(event):
-            palette = self.palette
-            right, bottom = event.width - 1, event.height - 1
-            radius = min(24, right // 2, bottom // 2)
-            surface.delete("surface")
-            surface.create_polygon(
-                radius, 1, right - radius, 1, right, 1, right, radius,
-                right, bottom - radius, right, bottom, right - radius, bottom,
-                radius, bottom, 1, bottom, 1, bottom - radius, 1, radius, 1, 1,
-                smooth=True, fill=palette.hero if hero else palette.card, outline="#235050" if hero else palette.edge,
-                width=2, tags=("surface",),
-            )
-        surface.bind("<Configure>", draw)
-        return outer, body
-
-    def section_title(self, parent, title):
-        palette = self.palette
-        row = tk.Frame(parent, bg=parent.cget("bg"))
-        tk.Frame(row, bg=palette.accent, width=7, height=24).pack(side="left", padx=(0, 11))
-        self.label(row, title, 11, bold=True).pack(side="left")
-        return row
-
-    def _build(self):
-        palette = self.palette
-        outer = tk.Frame(self, bg=palette.bg, padx=24, pady=18)
-        outer.pack(fill="both", expand=True)
-        self.content = outer
-        head = tk.Frame(outer, bg=palette.bg)
-        head.pack(fill="x", pady=(0, 12))
-        head.columnconfigure(0, weight=1)
-        identity = tk.Frame(head, bg=palette.bg)
-        identity.grid(row=0, column=0, sticky="w")
-        icon_path = Path(__file__).parent / "assets" / "muter.png"
-        if not hasattr(self, "header_icon") and icon_path.is_file():
-            self.app_icon = tk.PhotoImage(file=icon_path)
-            self.iconphoto(True, self.app_icon)
-            self.header_icon = self.app_icon.zoom(3).subsample(4)
-        if hasattr(self, "header_icon"):
-            self.label(identity, image=self.header_icon).pack(side="left", padx=(0, 16))
-        brand = tk.Frame(identity, bg=palette.bg)
-        brand.pack(side="left")
-        brand_line = tk.Frame(brand, bg=palette.bg)
-        brand_line.pack(anchor="w")
-        self.label(brand_line, APP_NAME, 19, bold=True).pack(side="left")
-        self.label(brand_line, "声纹净音", 9, palette.accent, True, padx=9,
-                   bg_override=palette.field).pack(side="left", padx=(10, 0))
-        self.label(brand, "会议语音净化 · 实时人声隔离", 9, palette.dim).pack(anchor="w")
-        header_actions = tk.Frame(head, bg=palette.bg)
-        header_actions.grid(row=0, column=1, sticky="e")
-        self.theme_btn = self.button(header_actions, self.theme_caption(), self.toggle_theme)
-        self.theme_btn.pack(side="left")
-        self.button(header_actions, "诊断与性能", self.show_diagnostics).pack(side="left", padx=8)
-        self.settings_btn = self.button(header_actions, "收起设置", self.toggle_settings)
-        self.settings_btn.pack(side="left")
-
-        footer = tk.Frame(outer, bg=palette.bg)
-        footer.pack(side="bottom", fill="x", pady=(5, 0))
-        self.label(footer, f"WINDOWS  /  v{__version__}", 8, palette.dim).pack(side="right")
-
-        scroll = tk.Frame(outer, bg=palette.bg)
-        scroll.pack(fill="both", expand=True)
-        canvas = tk.Canvas(scroll, bg=palette.bg, highlightthickness=0, bd=0)
-        self.body_canvas = canvas
-        bar = ttk.Scrollbar(scroll, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=bar.set)
-        bar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        body = tk.Frame(canvas, bg=palette.bg)
-        body_id = canvas.create_window((0, 0), window=body, anchor="nw")
-        body.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
-
-        shell, hero = self.panel(body, hero=True)
-        shell.pack(fill="x", pady=(0, 15))
-        actions = tk.Frame(hero, bg=palette.hero)
-        actions.pack(side="right", padx=(16, 0))
-        self.quick_btn = self.button(actions, "开启会议降噪", self.toggle_conference, hero=True)
-        self.quick_btn.grid(row=0, column=0, sticky="ew")
-        self.mute_btn = self.button(actions, "暂停传声", self.toggle_mute)
-        self.mute_btn.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-        hero_text = tk.Frame(hero, bg=palette.hero)
-        hero_text.pack(side="left", fill="x", expand=True)
-        self.state_badge = self.label(hero_text, "●  正在准备", 9, "#80E1C8", True)
-        self.state_badge.pack(anchor="w")
-        headline = tk.Frame(hero_text, bg=palette.hero)
-        headline.pack(fill="x", pady=(2, 0))
-        headline.columnconfigure(1, weight=1)
-        headline_title = self.label(headline, "会议降噪", 17, "#FFFFFF", True)
-        headline_title.grid(row=0, column=0, sticky="w")
-        status = self.label(headline, textvariable=self.status_var, size=9, color="#B9D1D8", wraplength=380)
-        status.grid(row=0, column=1, sticky="ew", padx=(14, 0))
-        def place_status(inline):
-            if getattr(headline, "_inline", None) == inline:
-                return
-            headline._inline = inline
-            status.grid_configure(row=0 if inline else 1, column=1 if inline else 0,
-                                  columnspan=1 if inline else 2, padx=(14, 0) if inline else 0)
-
-
-        cards = tk.Frame(body, bg=palette.bg)
-        cards.pack(fill="x", pady=(0, 15))
-        mode_shell, mode = self.panel(cards)
-        monitor_shell, monitor = self.panel(cards)
-
-        cards.columnconfigure(0, weight=7, uniform="main")
-        cards.columnconfigure(1, weight=5, uniform="main")
-        mode_shell.grid(row=0, column=0, sticky="nsew", padx=(0, 7))
-        monitor_shell.grid(row=0, column=1, sticky="nsew", padx=(7, 0))
-        mode_head = tk.Frame(mode, bg=palette.card)
-        mode_head.pack(fill="x", pady=(0, 11))
-        self.section_title(mode_head, "处理模式与声纹样本").pack(side="left")
-        self.mode_tag = self.label(mode_head, size=8, color=palette.dim, padx=9, pady=3, bg_override=palette.field)
-        self.mode_tag.pack(side="right")
-        self.quality_combo = ttk.Combobox(mode, textvariable=self.quality_var, state="readonly",
-                                         width=23, values=tuple(MODE_DESCRIPTIONS))
-        self.quality_combo.pack(fill="x")
-        self.quality_combo.bind("<<ComboboxSelected>>", self.change_model)
-        hint = self.label(mode, textvariable=self.mode_hint, size=9, color=palette.dim, wraplength=420)
-        hint.pack(fill="x", pady=(10, 13))
-        sample = tk.Frame(mode, bg=palette.card)
-        sample.pack(side="bottom", fill="x")
-        ttk.Separator(mode).pack(side="bottom", fill="x", pady=(0, 12))
-        self.sample_menu = tk.Menu(outer, tearoff=False, font=("Microsoft YaHei UI", 9), bg=palette.card,
-                                   fg=palette.text, activebackground=palette.selected,
-                                   activeforeground=palette.text, disabledforeground=palette.dim)
-        self.sample_menu.add_command(label="导入声音 WAV", command=self.import_voice)
-        self.sample_menu.add_command(label="查看选段", command=self.voice_info)
-        self.sample_menu.add_separator()
-        self.sample_menu.add_command(label="清除声音样本", command=self.delete_voice)
-        self.manage_btn = self.button(sample, "管理样本", self.show_sample_menu)
-        self.manage_btn.pack(side="right")
-        self.voice_btn = self.button(sample, "录入本人声音", self.enroll)
-        self.voice_btn.pack(side="right", padx=(5, 8))
-        details = tk.Frame(sample, bg=palette.card)
-        details.pack(side="left", fill="x", expand=True)
-        summary = self.label(details, textvariable=self.voice_summary, size=9, bold=True, wraplength=200)
-        summary.pack(fill="x")
-        sample_hint = self.label(details, textvariable=self.voice_var, size=8, color=palette.dim, wraplength=200)
-        sample_hint.pack(fill="x", pady=(3, 0))
-
-        monitor_head = tk.Frame(monitor, bg=palette.card)
-        monitor_head.pack(fill="x")
-        self.test_btn = self.button(monitor_head, "开启实时试听", self.toggle_monitor, primary=True)
-        self.test_btn.pack(side="right")
-        monitor_text = tk.Frame(monitor_head, bg=palette.card)
-        monitor_text.pack(side="left", fill="x", expand=True, padx=(0, 9))
-        self.section_title(monitor_text, "耳机实时试听").pack(anchor="w")
-        monitor_hint = self.label(monitor_text, textvariable=self.test_var, size=8, color=palette.dim, wraplength=340)
-        monitor_hint.pack(fill="x", pady=(4, 0))
-        self.ab_row = tk.Frame(monitor, bg=palette.card)
-        self.raw_btn = self.button(self.ab_row, "原声", lambda: self.set_monitor_audio(True))
-        self.raw_btn.pack(side="left")
-        self.clean_btn = self.button(self.ab_row, "降噪后", lambda: self.set_monitor_audio(False))
-        self.clean_btn.pack(side="left", padx=7)
-
-        self.level_panel = tk.Frame(monitor, bg=palette.card)
-        self.level_panel.pack(fill="x", pady=(12, 0))
-        ttk.Separator(self.level_panel).pack(fill="x", pady=(0, 9))
-        self.label(self.level_panel, "音频电平监控", 10, bold=True).pack(anchor="w", pady=(0, 5))
-        for text, attr, value in (("麦克风", "in_meter", self.input_level), ("处理输出", "out_meter", self.output_level)):
-            line = tk.Frame(self.level_panel, bg=palette.card)
-            line.pack(fill="x", pady=(4, 3))
-            self.label(line, textvariable=value, size=8, color=palette.dim).pack(side="right")
-            self.label(line, text, 9, palette.dim).pack(side="left")
-            if attr == "in_meter":
-                device = self.label(line, textvariable=self.mic_hint, size=8, color=palette.dim, wraplength=260)
-                device.pack(side="left", fill="x", expand=True, padx=6)
-            meter = ttk.Progressbar(self.level_panel, style="Meter.Horizontal.TProgressbar", maximum=60)
-            meter.pack(fill="x", pady=(0, 5))
-            setattr(self, attr, meter)
-
-        self.settings_card, settings = self.panel(body)
-        self.settings_card.pack(fill="x")
-        settings_head = tk.Frame(settings, bg=palette.card)
-        settings_head.pack(fill="x", pady=(0, 9))
-        settings_head.columnconfigure(0, weight=1)
-        self.section_title(settings_head, "设备与高级设置").grid(row=0, column=0, sticky="w")
-        tabs = tk.Frame(settings_head, bg=palette.card)
-        tabs.grid(row=0, column=1, sticky="e")
-        self.tab_buttons = {}
-        self.settings_pages = {}
-        for key, caption in (("devices", "音频设备"), ("ptt", "传声控制（PTT）"), ("diagnostics", "缓冲与诊断")):
-            tab = tk.Button(tabs, text=caption, command=lambda key=key: self.select_settings_tab(key),
-                            bg=palette.card, fg=palette.dim, activebackground=palette.card,
-                            activeforeground=palette.text, font=self.action_font, compound="center",
-                            padx=0, pady=0, bd=0, relief="flat", cursor="hand2", takefocus=True)
-            tab.pack(side="left", padx=(0, 3))
-            self.tab_buttons[key] = tab
-            self.settings_pages[key] = tk.Frame(settings, bg=palette.card, pady=5)
-
-        def place_tabs(inline):
-            if getattr(settings_head, "_inline", None) == inline:
-                return
-            settings_head._inline = inline
-            tabs.grid_configure(row=0 if inline else 1, column=1 if inline else 0,
-                                sticky="e" if inline else "w", pady=0 if inline else (7, 0))
-
-        config, ptt = self.settings_pages["devices"], self.settings_pages["ptt"]
-        self.diagnostics_tab = self.settings_pages["diagnostics"]
-        devices_row = tk.Frame(config, bg=palette.card)
-        devices_row.pack(fill="x")
-        devices_row.columnconfigure((0, 1), weight=1, uniform="devices")
-        self.label(devices_row, "输入麦克风", size=9, color=palette.dim).grid(row=0, column=0, sticky="w")
-        self.label(devices_row, "手动处理输出（虚拟声卡）", size=9, color=palette.dim).grid(row=0, column=1, sticky="w", padx=(12, 0))
-        self.input_combo = ttk.Combobox(devices_row, textvariable=self.input_var, state="readonly", width=20)
-        self.input_combo.grid(row=1, column=0, sticky="ew", pady=(5, 0))
-        self.output_combo = ttk.Combobox(devices_row, textvariable=self.output_var, state="readonly", width=20)
-        self.output_combo.grid(row=1, column=1, sticky="ew", padx=(12, 0), pady=(5, 0))
-        self.output_combo.bind("<<ComboboxSelected>>", lambda _: self.update_route())
-        ttk.Separator(config).pack(fill="x", pady=(11, 9))
-        config_actions = tk.Frame(config, bg=palette.card)
-        config_actions.pack(fill="x")
-        self.cable_btn = self.button(config_actions, "虚拟麦克风检查", self.cable_help)
-        self.cable_btn.pack(side="right")
-        self.refresh_btn = self.button(config_actions, "刷新设备", self.refresh_devices)
-        self.refresh_btn.pack(side="right", padx=(5, 8))
-        route_hint = self.label(config_actions, textvariable=self.route_var, size=8, color=palette.dim, wraplength=330)
-        route_hint.pack(side="left", fill="x", expand=True)
-
-        self.ptt_check = tk.Checkbutton(ptt, text="按住右 Ctrl 才传声", variable=self.ptt_var,
-            bg=palette.card, fg=palette.text, selectcolor=palette.field, activebackground=palette.card, activeforeground=palette.text,
-            font=("Microsoft YaHei UI", 10), anchor="w")
-        self.ptt_check.pack(anchor="w")
-        self.label(ptt, "松开按键后暂停向会议送音。", size=9, color=palette.dim).pack(anchor="w", pady=(5, 10))
-        controls = tk.Frame(ptt, bg=palette.card)
-        controls.pack(fill="x")
-        self.start_btn = self.button(controls, "手动开始", self.start_live)
-        self.start_btn.pack(side="left")
-        self.stop_btn = self.button(controls, "停止", self.stop)
-        self.stop_btn.pack(side="left", padx=7)
-        self.hold_btn = self.button(controls, "按住传声", lambda: None)
-        self.hold_btn.pack(side="left")
-        self.hold_btn.bind("<ButtonPress-1>", lambda _: setattr(self, "hold_pressed", True))
-        self.hold_btn.bind("<ButtonRelease-1>", lambda _: setattr(self, "hold_pressed", False))
-        self.hold_btn.bind("<Leave>", lambda _: setattr(self, "hold_pressed", False))
-
-        row = tk.Frame(self.diagnostics_tab, bg=palette.card)
-        row.pack(fill="x")
-        self.label(row, "输出缓冲", size=9, color=palette.dim).pack(side="left", padx=(0, 9))
-        self.latency_combo = ttk.Combobox(row, textvariable=self.latency_var, state="readonly", width=24,
-            values=("低延迟 · 60 ms 缓冲", "均衡 · 80 ms 缓冲", "稳健 · 160 ms 缓冲"))
-        self.latency_combo.pack(side="left")
-        self.button(row, "导出诊断", self.export_diagnostics).pack(side="right")
-        stats = self.label(self.diagnostics_tab, textvariable=self.stats_var, size=9, color=palette.dim, wraplength=600)
-        stats.pack(fill="x", pady=(13, 0))
-
-        viewport_width = 0
-        def resize(event):
-            nonlocal viewport_width
-            width = event.width
-            if width == viewport_width:
-                return
-            viewport_width = width
-            canvas.itemconfigure(body_id, width=width)
-            header_inline = width >= identity.winfo_reqwidth() + header_actions.winfo_reqwidth() + 20
-            header_actions.grid_configure(row=0 if header_inline else 1, column=1 if header_inline else 0,
-                                          sticky="e" if header_inline else "w", pady=0 if header_inline else (9, 0))
-            inline_headline = width >= 1150
-            place_status(inline_headline)
-            place_tabs(width >= 1100)
-            mode_width = (width - 14) * 7 // 12 - 48
-            monitor_width = width - mode_width - 110
-            remaining = mode_width - self.voice_btn.winfo_reqwidth() - self.manage_btn.winfo_reqwidth() - 20
-            hero_width = width - self.quick_btn.winfo_reqwidth() - 75
-            if inline_headline:
-                hero_width -= headline_title.winfo_reqwidth() + 14
-            wraps = ((status, hero_width), (hint, mode_width), (summary, remaining), (sample_hint, remaining),
-                     (monitor_hint, monitor_width - self.test_btn.winfo_reqwidth() - 12),
-                     (device, monitor_width - 265),
-                     (route_hint, width - self.cable_btn.winfo_reqwidth() - self.refresh_btn.winfo_reqwidth() - 70),
-                     (stats, width - 55))
-            for label, available in wraps:
-                label.configure(wraplength=max(70, available))
-
-        canvas.bind("<Configure>", resize)
-        self.select_settings_tab("devices")
-        self.sync_controls()
-
-    def select_settings_tab(self, selected):
-        self.selected_tab = selected
-        for key, page in self.settings_pages.items():
-            if key == selected:
-                page.pack(fill="x")
-            else:
-                page.pack_forget()
-        self.paint_settings_tabs()
-
-    def paint_settings_tabs(self):
-        palette = self.palette
-        for key, tab in self.tab_buttons.items():
-            active = key == self.selected_tab
-            face = self.button_face(tab.cget("text"), palette.selected if active else palette.field,
-                                    self.action_font, (26, 14))
-            tab.configure(image=face, fg=palette.accent if active else palette.dim)
-
-    def show_sample_menu(self):
-        if self.busy:
-            return
-        menu = self.sample_menu
-        menu.entryconfigure(1, state="normal" if self.voice_report else "disabled")
-        menu.entryconfigure(3, state="normal" if self.voice is not None else "disabled")
-        try:
-            menu.tk_popup(self.manage_btn.winfo_rootx(), self.manage_btn.winfo_rooty() + self.manage_btn.winfo_height())
-        finally:
-            menu.grab_release()
-
-    def show_diagnostics(self):
-        if self.closed:
-            return
-        self.show_settings()
-        self.select_settings_tab("diagnostics")
-        self.after_idle(lambda: self.body_canvas.yview_moveto(1))
-
-    def update_mic_hint(self, *_):
-        name = self.input_var.get().split("  ·  ", 1)[-1]
-        self.mic_hint.set(name or "等待识别麦克风")
-
-    def show_levels(self, input_db=None, output_db=None):
-        for db, meter, label in ((input_db, self.in_meter, self.input_level),
-                                 (output_db, self.out_meter, self.output_level)):
-            meter["value"] = 0 if db is None else min(60, max(0, 60 + db))
-            label.set("— dBFS" if db is None else f"{db:.0f} dBFS")
-
-    def toggle_settings(self):
-        if self.settings_card.winfo_manager():
-            self.settings_card.pack_forget()
-            self.settings_btn.configure(text="设置")
-            self.body_canvas.yview_moveto(0)
-        else:
-            self.settings_card.pack(fill="x")
-            self.settings_btn.configure(text="收起设置")
-            self.after_idle(lambda: self.body_canvas.yview_moveto(1))
+        self.deiconify()
 
     def hide_to_tray(self):
         if self.closed:
@@ -715,7 +204,7 @@ class App(tk.Tk):
         messagebox.showinfo("参考语音质量", f"选段：第 {r['selected_start_seconds']:.2f} 秒开始的连续 3 秒\n"
             f"有效声音：{r['active_audio_seconds']:.2f} 秒\n音量：{r['selected_rms_dbfs']:.1f} dBFS\n"
             f"爆音比例：{r['selected_clipping_fraction']:.2%}\n\n" + "\n".join(r["warnings"] or ["未发现明显音量或爆音问题。"])
-            + "\n\n这些检查只能判断信号质量，不能确认身份或判断是否混入别人。请在安静处独自录入。")
+            + "\n\n这些检查只评估信号质量，无法判断说话人身份。请确认录音中只有你讲话。")
 
     def selected_settings(self):
         return {"低延迟 · 60 ms 缓冲": LiveSettings(60, 20),
@@ -758,12 +247,13 @@ class App(tk.Tk):
         action = "停止处理" if self.live or self.conference_route else "取消操作"
         self.quick_btn.configure(state="normal" if can_start or can_stop else "disabled",
                                  text=action if can_stop else "开启会议降噪")
+        self.paint_button(self.quick_btn, "stop" if can_stop else "hero", "开启会议降噪", 118)
         self.mode_hint.set(MODE_DESCRIPTIONS[self.quality_var.get()])
         self.mode_tag.configure(text="单人会议推荐" if self.quality_var.get() == ISOLATION else
                                 "无需声音样本" if not self.model.requires_voice else "使用本人声纹")
         self.voice_summary.set("已准备本人声音样本" if has_voice else
-                               "人声隔离需要一次本人声音录入" if self.model.requires_voice else
-                               "可选 · 录入本人声音以启用人声隔离")
+                               "需要本人声音样本" if self.model.requires_voice else
+                               "可选 · 本人声音样本")
         if self.busy:
             badge = "已暂停传声" if self.live and self.paused else "耳机试听" if self.monitoring else "处理中"
         elif self.conference_route:
@@ -782,7 +272,7 @@ class App(tk.Tk):
         self.test_btn.configure(state="normal" if monitor_available else "disabled",
                                 text="停止实时试听" if self.monitoring else "开启实时试听")
         if self.monitoring:
-            self.ab_row.pack(fill="x", pady=(7, 0), before=self.level_panel)
+            self.ab_row.pack(side="right", padx=(self.px(4), 0), before=self.monitor_message)
         else:
             self.ab_row.pack_forget()
         for b in (self.raw_btn, self.clean_btn):
@@ -797,7 +287,7 @@ class App(tk.Tk):
         self.mute_btn.configure(state="normal" if self.live and self.busy else "disabled",
                                 text="恢复传声" if self.paused else "暂停传声")
         if self.live and self.busy:
-            self.mute_btn.grid()
+            self.mute_btn.grid(pady=(self.px(4), 0))
         else:
             self.mute_btn.grid_remove()
 
@@ -1238,7 +728,7 @@ class App(tk.Tk):
                         self.show_levels()
                 elif kind == "meters":
                     self.show_levels(value["input"], value["output"])
-                    self.stats_var.set(f"推理 P95：{value['p95']:.1f} / {value['chunk_ms']} ms    缓冲：{value['buffer_ms']:.0f} ms    "
+                    self.stats_var.set(f"推理 P95：{value['p95']:.1f} / {value['chunk_ms']} ms    输出缓冲：{value['buffer_ms']:.0f} ms    "
                         f"欠载：{value['underruns']}    时钟校正：{value['clock_ppm']:+.0f} ppm（非端到端延迟）")
                 elif kind == "live_stopped":
                     if self.conference_route and not value:
@@ -1272,6 +762,7 @@ class App(tk.Tk):
         if self.closed:
             return
         self.closed = True
+        self.stop_desktop_timers()
         logging.info("app_exit_requested")
         if self.poll_timer is not None:
             self.after_cancel(self.poll_timer)
@@ -1302,10 +793,7 @@ class App(tk.Tk):
 def main():
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    except Exception:
-        pass
+    enable_per_monitor_dpi()
     from .tray import TrayIcon, desktop_instance
     with desktop_instance() as primary:
         if primary:

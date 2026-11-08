@@ -12,6 +12,7 @@ dist_root = root / "dist" / ("v" + __version__)
 subprocess.run([
     sys.executable, "-m", "PyInstaller", "--noconfirm", "--windowed", "--onedir",
     "--name", APP_NAME, "--collect-all", "voxlock", "--copy-metadata", "onnxruntime",
+    "--manifest", str(root / "installer/ClearMic.manifest"),
     "--icon", str(root / "muter/assets/muter.ico"),
     "--add-data", f"{root / 'muter/assets/muter.png'}:muter/assets",
     "--add-data", f"{root / 'muter/assets/muter.ico'}:muter/assets",
