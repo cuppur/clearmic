@@ -1,3 +1,4 @@
 """Local Windows target-speaker microphone prototype."""
 
-__version__ = "0.4.2"
+APP_NAME = "ClearMic"
+__version__ = "0.4.3"

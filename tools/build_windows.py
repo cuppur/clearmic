@@ -7,11 +7,11 @@ import sys
 
 root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root))
-from muter import __version__
+from muter import APP_NAME, __version__
 dist_root = root / "dist" / ("v" + __version__)
 subprocess.run([
     sys.executable, "-m", "PyInstaller", "--noconfirm", "--windowed", "--onedir",
-    "--name", "Muter", "--collect-all", "voxlock", "--copy-metadata", "onnxruntime",
+    "--name", APP_NAME, "--collect-all", "voxlock", "--copy-metadata", "onnxruntime",
     "--icon", str(root / "muter/assets/muter.ico"),
     "--add-data", f"{root / 'muter/assets/muter.png'}:muter/assets",
     "--add-data", f"{root / 'muter/assets/muter.ico'}:muter/assets",
@@ -22,7 +22,7 @@ subprocess.run([
     "--exclude-module", "torchaudio", "--exclude-module", "onnx", "--exclude-module", "modelscope",
     "--collect-all", "sherpa_onnx", "--collect-all", "kaldi_native_fbank", "--distpath", str(dist_root),
 ], cwd=root, check=True)
-dest = dist_root / "Muter"
+dest = dist_root / APP_NAME
 model_dest = dest / "models" / "voxlock"
 for name in ["onnx/v2/enroll.onnx", "onnx/v2/chunk_int8.onnx", "onnx/v2/chunk.onnx", "manifest.json", "README.md"]:
     src = root / "models" / "voxlock" / name
@@ -56,4 +56,4 @@ python_license = Path(sys.base_prefix) / "LICENSE.txt"
 if python_license.exists():
     shutil.copy2(python_license, licenses / "PYTHON_LICENSE.txt")
 (dest / "build-environment.txt").write_text("\n".join(sorted(inventory)), encoding="utf-8")
-print(f"Ready: {dest / 'Muter.exe'}", flush=True)
+print(f"Ready: {dest / (APP_NAME + '.exe')}", flush=True)

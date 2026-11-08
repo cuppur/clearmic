@@ -1,20 +1,22 @@
-# Muter
+# ClearMic
 
-![Muter](muter/assets/muter.png)
+![ClearMic](muter/assets/muter.png)
 
-Muter 是 Windows x64 会议麦克风工具。在本机压低环境噪声，并可用本人声音样本减少旁人和电视人声。实时降噪与耳机试听均在本机处理，音频不保存。
+ClearMic 是 Windows x64 会议麦克风工具。在本机压低环境噪声，并可用本人声音样本减少旁人和电视人声。实时降噪与耳机试听均在本机处理，音频不保存。
 
 ## 安装和使用
 
-从 [GitHub Releases](https://github.com/cuppur/muter/releases/latest) 下载并运行最新的 `Muter-Setup-*-x64.exe`。安装包包含运行环境、模型和 VB-Audio 提供的原版基础 VB-CABLE。Windows 可能在安装驱动时要求管理员授权或重启。
+从 [GitHub Releases](https://github.com/cuppur/muter/releases/latest) 下载并运行最新的 Windows 安装程序。ClearMic 的安装程序名为 `ClearMic-Setup-*-x64.exe`，早期版本以 Muter 发布。安装包包含运行环境、模型和 VB-Audio 提供的原版基础 VB-CABLE。Windows 可能在安装驱动时要求管理员授权或重启。
 
 1. 选「环境降噪」「人声隔离」或「加强人声隔离」。人声隔离需要一次本人声音录入。
 2. 连上耳机，点「开启实时试听」，用「原声」和「降噪后」比较。
 3. 点「开启会议降噪」。飞书等会议软件使用「系统默认」麦克风。
-4. 关闭主窗口后，Muter 会在 Windows 右下角托盘继续运行。单击图标或再次打开快捷方式可恢复主界面。
-5. 右键图标可以开启或停止会议降噪、暂停或恢复传声、切换模式、控制试听或打开高级设置。选择「退出 Muter」会停止音频处理、恢复设备并关闭应用。
+4. 关闭主窗口后，ClearMic 会在 Windows 右下角托盘继续运行。单击图标或再次打开快捷方式可恢复主界面。
+5. 右键图标可以开启或停止会议降噪、暂停或恢复传声、切换模式、控制试听或打开高级设置。选择「退出 ClearMic」会停止音频处理、恢复设备并关闭应用。
 
 Windows 可能将托盘图标收在右下角的「^」折叠区域。处理模式在停止当前音频会话后切换。
+
+主窗口右上角可切换浅色和深色主题，ClearMic 会记住上次选择。「诊断与性能」可查看缓冲和运行指标，并导出诊断包。
 
 ## 处理模式
 

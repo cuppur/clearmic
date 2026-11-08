@@ -11,7 +11,9 @@ import win32event
 import win32gui
 import winerror
 
+from . import APP_NAME
 
+# Preserve the single-instance identity across upgrades from Muter.
 WINDOW_CLASS = "Muter.NotificationArea"
 TRAY_EVENT = win32con.WM_APP + 1
 SHOW_WINDOW = win32con.WM_APP + 2
@@ -45,7 +47,7 @@ class TrayIcon:
         self.hwnd = self.icon = self.atom = 0
         self.registered = False
         self.menu_open = False
-        self.title = "Muter"
+        self.title = APP_NAME
         self.instance = win32api.GetModuleHandle(None)
         self.taskbar_created = win32gui.RegisterWindowMessage("TaskbarCreated")
         try:
@@ -54,7 +56,7 @@ class TrayIcon:
             window_class.lpszClassName = WINDOW_CLASS
             window_class.lpfnWndProc = self._on_message
             self.atom = win32gui.RegisterClass(window_class)
-            self.hwnd = win32gui.CreateWindow(WINDOW_CLASS, "Muter tray", win32con.WS_POPUP,
+            self.hwnd = win32gui.CreateWindow(WINDOW_CLASS, f"{APP_NAME} tray", win32con.WS_POPUP,
                                               0, 0, 0, 0, 0, 0, self.instance, None)
             icon_path = Path(__file__).parent / "assets" / "muter.ico"
             self.icon = win32gui.LoadImage(0, str(icon_path), win32con.IMAGE_ICON,
@@ -73,7 +75,7 @@ class TrayIcon:
         logging.info("tray_registered")
 
     def set_status(self, status):
-        title = f"Muter · {status}"
+        title = f"{APP_NAME} · {status}"
         if self.title == title:
             return
         self.title = title
@@ -139,7 +141,7 @@ class TrayIcon:
         add(advanced, "刷新音频设备", app.refresh_btn.invoke, not app.busy)
         add(advanced, "导出诊断", app.export_diagnostics)
         win32gui.AppendMenu(menu, win32con.MF_SEPARATOR, 0, "")
-        add(menu, "退出 Muter", app.close)
+        add(menu, f"退出 {APP_NAME}", app.close)
         return commands
 
     def show_menu(self):

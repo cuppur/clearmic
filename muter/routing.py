@@ -82,7 +82,7 @@ class RouteSession:
             import psutil
             owner = json.loads(self.path.read_text(encoding="utf-8")).get("owner")
             if owner != os.getpid() and owner and psutil.pid_exists(owner):
-                raise RuntimeError("另一个Muter实例正在管理会议麦克风，请先停止该实例。")
+                raise RuntimeError("另一个 ClearMic 实例正在管理会议麦克风，请先停止该实例。")
             self.restore()
         target = self.api.cable_capture()
         if hasattr(self.api, "repair_virtual_defaults"):
@@ -147,7 +147,7 @@ def install_driver():
     """Invoke the unmodified signed driver bundled by the Windows installer."""
     exe = ROOT / "components" / "vbcable" / "VBCABLE_Setup_x64.exe"
     if not exe.exists():
-        raise RuntimeError("缺少组件安装包，请运行完整的 Muter Windows 安装程序进行修复。")
+        raise RuntimeError("缺少组件安装包，请运行完整的 ClearMic 安装程序进行修复。")
     WindowsAudio().repair_virtual_defaults()
     system_snapshot(DATA / "driver-audio-before.json")
     result = ctypes.windll.shell32.ShellExecuteW(None, "runas", str(exe), "-i -h", str(exe.parent), 0)

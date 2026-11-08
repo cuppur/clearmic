@@ -1,6 +1,6 @@
 # Third-party components
 
-Muter prototype uses the following upstream projects. Original copyright,
+ClearMic uses the following upstream projects. Original copyright,
 license, attribution and notices remain applicable. The packaged `licenses/`
 directory contains discovered license/notice files from the build environment;
 `build-environment.txt` records installed distribution versions.

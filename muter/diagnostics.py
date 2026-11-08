@@ -65,7 +65,7 @@ def export_bundle(data, context=None):
     data = Path(data)
     folder = data / "diagnostics"
     folder.mkdir(parents=True, exist_ok=True)
-    destination = folder / ("Muter-diagnostics-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".zip")
+    destination = folder / ("ClearMic-diagnostics-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".zip")
     logging.info("diagnostics_export audio_content_included=false")
     for handler in logging.getLogger().handlers:
         handler.flush()
